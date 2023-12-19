@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "element.h"
 #include "parserutils.h"
 #include "layoutcontext.h"
 
@@ -14,6 +15,10 @@
 #include "symbolelement.h"
 #include "useelement.h"
 #include "styleelement.h"
+#include <cassert>
+#include <iostream>
+#include <string>
+#include <utility>
 
 namespace lunasvg {
 
@@ -1002,7 +1007,8 @@ static inline ElementID elementid(const std::string& name)
         {"solidColor", ElementID::SolidColor},
         {"svg", ElementID::Svg},
         {"symbol", ElementID::Symbol},
-        {"use", ElementID::Use}
+        {"use", ElementID::Use},
+        {"text", ElementID::Text}
     };
 
     auto it = elementmap.find(name);
@@ -1043,8 +1049,10 @@ static inline PropertyID csspropertyid(const std::string& name)
     };
 
     auto it = csspropertymap.find(name);
-    if(it == csspropertymap.end())
+    if(it == csspropertymap.end()){
+        std::cerr << "Unknown property: " << name << std::endl;
         return PropertyID::Unknown;
+    }
     return it->second;
 }
 
@@ -1619,7 +1627,10 @@ static inline std::unique_ptr<Element> createElement(ElementID id)
         return makeUnique<MarkerElement>();
     case ElementID::Style:
         return makeUnique<StyleElement>();
+    case ElementID::Text:
+        return makeUnique<TextElement>();
     default:
+        assert(false && "Unknown element id");
         break;
     }
 
@@ -1761,8 +1772,23 @@ bool TreeBuilder::parse(const char* data, std::size_t size)
 
     while(ptr < end) {
         auto start = ptr;
+
+        auto beforeSkip = ptr;
+
         if(!Utils::skipUntil(ptr, end, '<'))
             break;
+
+        if (current && current->isText()) {
+            std::string text(beforeSkip, ptr);
+
+            if (!text.empty()) {
+                auto node = makeUnique<TextNode>();
+
+                node->text = std::move(text);
+
+                current->addChild(std::move(node));
+            }
+        }
 
         handleText(start, ptr, false);
         ptr += 1;

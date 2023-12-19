@@ -31,7 +31,8 @@ enum class ElementID {
     Style,
     Svg,
     Symbol,
-    Use
+    Use,
+    Text
 };
 
 enum class PropertyID {

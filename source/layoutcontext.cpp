@@ -7,7 +7,13 @@
 #include "markerelement.h"
 #include "geometryelement.h"
 
+
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
 #include <cmath>
+#include <cassert>
+#include <iostream>
 
 namespace lunasvg {
 
@@ -377,6 +383,184 @@ void MarkerData::inflate(Rect& box) const
     for(const auto& position : positions) {
         box.unite(position.marker->markerBoundingBox(position.origin, position.angle, strokeWidth));
     }
+}
+
+namespace {
+struct utfCharSz {
+    int unicodeCh;
+    int size;
+};
+
+void Debug(const char *str) {
+  std::cerr << str << std::endl;
+}
+
+// Function to convert a UTF-8 character to Unicode code point
+utfCharSz utf8ToUnicode(const char *utf8Char) {
+  unsigned char c = utf8Char[0];
+
+  if (c < 0x80) {
+    // ASCII character
+    return {c, 1};
+  } else if ((c & 0xE0) == 0xC0) {
+    // 2-byte sequence
+    return {((c & 0x1F) << 6) | (utf8Char[1] & 0x3F), 2};
+  } else if ((c & 0xF0) == 0xE0) {
+    // 3-byte sequence
+    return {((c & 0x0F) << 12) | ((utf8Char[1] & 0x3F) << 6) |
+                (utf8Char[2] & 0x3F),
+            3};
+  } else if ((c & 0xF8) == 0xF0) {
+    // 4-byte sequence
+    return {((c & 0x07) << 18) | ((utf8Char[1] & 0x3F) << 12) |
+                ((utf8Char[2] & 0x3F) << 6) | (utf8Char[3] & 0x3F),
+            4};
+  } else {
+    // Invalid UTF-8 sequence
+    return {-1, 0};
+  }
+}
+
+/*
+https://github.com/Fabio3rs/e-Paper-study/commit/fed7a1cd76e9d5ca1b80b2f589b113aed3992a35
+*/
+
+void Paint_DrawChar(uint32_t Xpoint, uint32_t Ypoint, FT_GlyphSlot glyph,
+                    Color Color_Foreground, Color Color_Background, RenderState& state) {
+  uint32_t Page, Column;
+
+  if (Xpoint > state.canvas->width() || Ypoint > state.canvas->height()) {
+    Debug("Paint_DrawChar Input exceeds the normal display range\r\n");
+    return;
+  }
+
+  const unsigned char *ptr = glyph->bitmap.buffer;
+  const uint32_t Ys = Ypoint - glyph->bitmap_top;
+
+  for (Page = 0; Page < glyph->bitmap.rows; Page++) {
+    for (Column = 0; Column < glyph->bitmap.width; Column++) {
+
+        state.canvas->setPixel(Xpoint + Column, Ys + Page, ptr[Column] > 0 ? Color_Foreground : Color_Background);
+
+      ++ptr;
+    } // Write a line
+  }   // Write all
+}
+
+void Paint_DrawString_UTF8(uint32_t Xstart, uint32_t Ystart, const char *pString,
+                           FT_Face face, Color Color_Foreground,
+                           Color Color_Background, RenderState& state) {
+  uint32_t Xpoint = Xstart;
+  uint32_t Ypoint = Ystart;
+
+  if (Xstart > state.canvas->width() || Ystart > state.canvas->height()) {
+    Debug("Paint_DrawString_EN Input exceeds the normal display range\r\n");
+    return;
+  }
+
+  unsigned int lastrows = 0;
+  unsigned int lastcols = 0;
+
+  while (*pString != '\0') {
+    if (*pString == '\n') {
+      Xpoint = Xstart;
+      Ypoint += lastrows + 1;
+      ++pString;
+      continue;
+    }
+
+    utfCharSz charcode = utf8ToUnicode(pString);
+
+    assert(charcode.size > 0);
+
+    if (isspace(charcode.unicodeCh)) {
+      Xpoint += (lastcols * 2) / 3;
+      ++pString;
+      continue;
+    }
+
+    std::cout << charcode.unicodeCh << std::endl;
+
+    if (FT_Load_Char(face, charcode.unicodeCh, FT_LOAD_RENDER)) {
+      std::cerr << "Error: Could not load glyph" << std::endl;
+      continue;
+    }
+
+    FT_GlyphSlot g = face->glyph;
+
+    lastrows = std::max(g->bitmap.rows, lastrows);
+    lastcols = std::max(g->bitmap.width, lastcols);
+
+    // if X direction filled , reposition to(Xstart,Ypoint),Ypoint is Y
+    // direction plus the Height of the character
+    if ((Xpoint + g->bitmap.width) > state.canvas->width()) {
+      Xpoint = Xstart;
+      Ypoint += lastrows + 1;
+    }
+
+    // If the Y direction is full, reposition to(Xstart, Ystart)
+    if ((Ypoint + g->bitmap.rows) > state.canvas->height()) {
+      // Xpoint = Xstart;
+      // Ypoint = Ystart;
+      break;
+    }
+
+    Paint_DrawChar(Xpoint, Ypoint, g, Color_Foreground, Color_Background, state);
+
+    Xpoint += 1;
+
+    // The next character of the address
+    pString += charcode.size;
+
+    // The next word of the abscissa increases the font of the broadband
+    Xpoint += g->bitmap.width;
+  }
+}
+
+FT_Face face;
+
+bool loadFt2() {
+  FT_Library ft;
+  if (FT_Init_FreeType(&ft)) {
+    std::cerr << "Error: Could not initialize FreeType library" << std::endl;
+    return 1;
+  }
+
+  // Load the font file
+  if (FT_New_Face(ft, "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf", 0,
+                  &face)) {
+    Debug("Error: Could not load the font file\n");
+    return 1;
+  }
+
+  // Set character size
+  if (FT_Set_Pixel_Sizes(face, 0, 64)) {
+    Debug("Error: FT_Set_Pixel_Sizes\n");
+    return 1;
+  }
+
+  return 0;
+}
+
+void staticLoadFt2() {
+    static bool loaded = loadFt2();
+    (void)loaded;
+}
+}
+
+LayoutText::LayoutText()
+    : LayoutObject(LayoutId::Text)
+{
+}
+
+void LayoutText::render(RenderState& state) const
+{
+    std::cout << "LayoutText::render  " << text << "   " << std::hex << fillData.color.value() << "   " << strokeData.color.value() << std::endl;
+    staticLoadFt2();
+
+    std::cout << "filldata rgb " << (int)fillData.color.red() << " " << (int)fillData.color.green() << " " << (int)fillData.color.blue() << std::endl;
+
+    Paint_DrawString_UTF8(x, y, text.c_str(), face, fillData.color, {}, state);
 }
 
 LayoutShape::LayoutShape()

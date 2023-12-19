@@ -8,7 +8,14 @@ set(CMAKE_C_STANDARD 11)
 option(BUILD_SHARED_LIBS "Build as a shared library" OFF)
 option(LUNASVG_BUILD_EXAMPLES "Build example(s)" OFF)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FREETYPE REQUIRED freetype2)
+
 add_library(lunasvg)
+
+target_include_directories(lunasvg SYSTEM PUBLIC ${FREETYPE_INCLUDE_DIRS})
+
+target_link_libraries(lunasvg PUBLIC ${FREETYPE_LIBRARIES})
 
 add_subdirectory(include)
 add_subdirectory(source)

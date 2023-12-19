@@ -50,6 +50,8 @@ public:
 
     void luminance();
 
+    void setPixel(unsigned int x, unsigned int y, const Color& color);
+
     unsigned int width() const;
     unsigned int height() const;
     unsigned int stride() const;

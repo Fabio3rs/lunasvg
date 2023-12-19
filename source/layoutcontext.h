@@ -20,7 +20,8 @@ enum class LayoutId {
     LinearGradient,
     RadialGradient,
     Pattern,
-    SolidColor
+    SolidColor,
+    Text
 };
 
 class RenderState;
@@ -265,6 +266,36 @@ public:
 public:
     MarkerPositionList positions;
     double strokeWidth{1};
+};
+
+class LayoutText : public LayoutObject {
+public:
+    LayoutText();
+
+    void render(RenderState& state) const;
+
+public:
+    std::string text;
+    double x;
+    double y;
+    double dx;
+    double dy;
+    double rotate;
+    //TextAnchor anchor;
+    double kerning;
+    double letterSpacing;
+    double wordSpacing;
+    double fontSize;
+    double fontSizeAdjust;
+    double lengthAdjust;
+    //FontData fontData;
+    FillData fillData;
+    StrokeData strokeData;
+    MarkerData markerData;
+    Visibility visibility;
+    double opacity;
+    const LayoutMask* masker;
+    const LayoutClipPath* clipper;
 };
 
 class LayoutShape : public LayoutObject {

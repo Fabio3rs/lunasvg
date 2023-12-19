@@ -1,6 +1,8 @@
 #include "canvas.h"
 
+#include <cassert>
 #include <cmath>
+#include <cstdio>
 
 namespace lunasvg {
 
@@ -161,6 +163,25 @@ void Canvas::luminance()
             pixels[x] = l << 24;
         }
     }
+}
+
+void Canvas::setPixel(unsigned int x, unsigned int y, const Color& color)
+{
+    if (color.alpha() == 0) {
+        return;
+    }
+
+    auto width = plutovg_surface_get_width(surface);
+    auto height = plutovg_surface_get_height(surface);
+    if(x >= width || y >= height) {
+        //assert(false && "Canvas::setPixel: out of bounds");
+        return;
+    }
+
+    auto stride = plutovg_surface_get_stride(surface);
+    auto data = plutovg_surface_get_data(surface);
+    auto pixels = reinterpret_cast<uint32_t*>(data + stride * y);
+    pixels[x] = color.value();
 }
 
 unsigned int Canvas::width() const
